@@ -13,16 +13,16 @@ class Tile():
         self.img = img
         self.idx = idx
         self.neighbors = {
-            'top': [],
-            'bottom': [],
-            'left': [],
-            'right': []
+            'top':    set(),
+            'bottom': set(),
+            'left':   set(),
+            'right':  set()
         }
         self.exclusions = {
-            'top': [],
-            'bottom': [],
-            'left': [],
-            'right': []
+            'top':    set(),
+            'bottom': set(),
+            'left':   set(),
+            'right':  set()
         }
         
     def __str__(self):
@@ -35,11 +35,11 @@ class Tile():
         return self.img[idx]
         
     def add_neighbor(self, direction, tile):
-        self.neighbors[direction].append(tile.idx)
+        self.neighbors[direction].add(tile.idx)
 
 
 def check_side(side1, side2):
-    ratio = 0.8
+    ratio = 1.0
     num_pixels = np.prod(side1.shape)
     threshold = ratio * num_pixels
     if np.sum(side1 == side2) >= threshold:
@@ -118,3 +118,48 @@ def update_entropy(choices, rows, cols):
         for col in range(cols):
             entropy_board[row, col] = len(choices[(row, col)])
     return entropy_board
+
+
+def step(info, row_col = None):
+    entropy_board   = info['entropy_board']
+    tile_idx_list   = info['tile_idx_list']
+    observed        = info['observed']
+    choices         = info['choices']
+    history         = info['history']
+    canvas          = info['canvas']
+    tiles           = info['tiles']
+    rows            = info['rows']
+    cols            = info['cols']
+    
+    if row_col:
+        row, col = row_col
+    else:
+        row, col = get_min_entropy_coord(entropy_board, observed)
+    state = np.random.choice(choices[(row,  col)])
+    history.append((row, col, state, choices[(row,  col)]))
+    choices_temp = deepcopy(choices)
+    choices_temp[(row, col)] = [state]
+    retract = False
+    
+    # compute new probability for 4 immediate neighbors
+    for i, j in [[row-1, col], [row+1, col], [row, col-1], [row, col+1]]:
+        if 0 <= i < rows and 0 <= j < cols:
+            if not observed[i, j]:
+                attempt = reduce_prob(choices_temp, tiles, i, j, rows, cols, tile_idx_list)
+                if attempt:
+                    choices_temp = attempt
+                else:
+                    retract = True
+                    break
+    
+    canvas[row,  col] = state
+    observed[row, col] = True
+    
+    info['entropy_board']   = entropy_board
+    info['observed']        = observed
+    info['choices']         = choices_temp
+    info['history']         = history
+    info['canvas']          = canvas
+    info['tiles']           = tiles
+    
+    return info, retract
